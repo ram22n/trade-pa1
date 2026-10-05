@@ -1,10 +1,21 @@
-# advisors/rules.py  (TEMP easier BUY for testing)
-def rules_strategy(row):
-    # Easier BUY: trend up and RSI >= 50 (removed VWAP filter)
-    if row['ema_fast'] > row['ema_slow'] and row['rsi'] >= 50:
+def rules_strategy(row, settings: dict):
+    buy = row["ema_fast"] > row["ema_slow"] and row["rsi"] >= settings["buy_rsi_min"]
+    if settings["require_close_above_ema_trend"]:
+        buy = buy and row["Close"] > row["ema_50"]
+    if settings["require_volume_above_average"]:
+        buy = buy and row["Volume"] > row["vol_ma20"]
+
+    if buy:
         return "BUY"
-    # SELL when trend down OR very overbought OR below VWAP by 0.5%
-    elif row['ema_fast'] < row['ema_slow'] or row['rsi'] > 75 or row['Close'] < row['vwap'] * 0.995:
+
+    overbought = row["rsi"] > settings["sell_rsi_max"]
+    if settings["overbought_sell_requires_weakening"]:
+        overbought = overbought and row["Close"] < row["prev_close"]
+
+    if (
+        row["ema_fast"] < row["ema_slow"]
+        or overbought
+        or row["Close"] < row["vwap"] * settings["vwap_sell_multiplier"]
+    ):
         return "SELL"
-    else:
-        return "HOLD"
+    return "HOLD"

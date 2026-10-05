@@ -6,13 +6,14 @@ import pandas as pd
 from dotenv import load_dotenv
 from alpaca_trade_api import REST
 
-from features.indicators import add_indicators
 from advisors.rules import rules_strategy
+from configs.loader import load_config
+from features.indicators import add_indicators
 
-# --- Config ---
-TICKERS = ["AAPL", "MSFT", "NVDA", "SPY", "QQQ"]
-LOOKBACK_MINUTES = 120     # how many recent 1-min bars to compute indicators on
-SLEEP_FALLBACK = 15        # seconds to sleep on errors
+CONFIG = load_config("live_v2.yml")
+TICKERS = CONFIG["symbols"]
+LOOKBACK_MINUTES = CONFIG["data"]["lookback_bars"]
+SLEEP_FALLBACK = CONFIG["execution"]["error_sleep_seconds"]
 
 # --- Setup ---
 load_dotenv()
@@ -21,7 +22,12 @@ API_SECRET = os.getenv("ALPACA_SECRET")
 BASE_URL = os.getenv("ALPACA_BASE_URL")
 
 def fetch_last_n_minutes(api: REST, symbol: str, n: int = LOOKBACK_MINUTES) -> pd.DataFrame | None:
-    bars = api.get_bars(symbol, "1Min", limit=n, feed="iex").df
+    bars = api.get_bars(
+        symbol,
+        CONFIG["data"]["interval"],
+        limit=n,
+        feed=CONFIG["data"]["feed"],
+    ).df
     if bars is None or bars.empty:
         return None
 
@@ -58,13 +64,14 @@ def main():
 
             for sym in TICKERS:
                 df = fetch_last_n_minutes(api, sym, LOOKBACK_MINUTES)
-                if df is None or len(df) < 30:
+                if df is None or len(df) < CONFIG["data"]["minimum_bars"]:
                     print(f"{sym}: not enough data yet")
                     continue
 
-                df = add_indicators(df)
+                df = add_indicators(df, CONFIG["indicators"])
+                df["prev_close"] = df["Close"].shift(1)
                 last = df.iloc[-1]
-                sig = rules_strategy(last)
+                sig = rules_strategy(last, CONFIG["signal"])
 
                 px = float(last["Close"])
                 rsi = float(last["rsi"])
@@ -75,7 +82,9 @@ def main():
 
                 print(
                     f"[{ts}] {sym}: {sig} — px={px:.2f}, rsi={rsi:.1f}, "
-                    f"ema9>ema21? {emaf>emas}, above vwap? {px>=vwap}"
+                    f"ema{CONFIG['indicators']['ema_fast']}>"
+                    f"ema{CONFIG['indicators']['ema_slow']}? {emaf>emas}, "
+                    f"above vwap? {px>=vwap}"
                 )
 
             now = dt.datetime.now(dt.timezone.utc)

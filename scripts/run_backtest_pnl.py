@@ -3,25 +3,31 @@ import math
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from features.indicators import add_indicators
 from advisors.rules import rules_strategy
+from configs.loader import load_config
+from features.indicators import add_indicators
 
-TICKERS = ["AAPL","MSFT","NVDA","SPY","QQQ"]
-
-# Risk settings (simple)
-RISK_PER_TRADE = 0.003     # 0.3% of equity risked each entry
-ATR_MULT = 2.0             # stop = entry - ATR_MULT*ATR
-MAX_ALLOC = 0.30           # never allocate more than 30% of equity to one ticker
-HALF_SPREAD = 0.00015      # 1.5 bps each side (slippage proxy)
+CONFIG = load_config("backup_v1.yml")
+TICKERS = CONFIG["symbols"]
+RISK_PER_TRADE = CONFIG["risk"]["risk_per_trade"]
+ATR_MULT = CONFIG["risk"]["atr_stop_multiplier"]
+MAX_ALLOC = CONFIG["risk"]["max_allocation_per_symbol"]
+HALF_SPREAD = CONFIG["costs"]["slippage_half_spread"]
+INITIAL_EQUITY = CONFIG["backtest"]["initial_equity"]
 
 def run_one(ticker: str):
-    df = yf.download(ticker, period="5d", interval="1m", auto_adjust=True)
+    df = yf.download(
+        ticker,
+        period=CONFIG["data"]["period"],
+        interval=CONFIG["data"]["interval"],
+        auto_adjust=True,
+    )
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.droplevel(1)
-    df = add_indicators(df)
-    df["signal"] = df.apply(rules_strategy, axis=1)
+    df = add_indicators(df, CONFIG["indicators"])
+    df["signal"] = df.apply(lambda row: rules_strategy(row, CONFIG["signal"]), axis=1)
 
-    cash = 1.0           # start with $1 normalized equity
+    cash = INITIAL_EQUITY
     shares = 0
     entry = None
     stop  = None
@@ -79,7 +85,7 @@ def run_one(ticker: str):
     # finalize
     final_equity = cash + shares * float(df["Close"].iloc[-1])
     equity_s = pd.Series(equity_curve)
-    ret_total = float(final_equity - 1.0)
+    ret_total = float(final_equity / INITIAL_EQUITY - 1.0)
     rtn = equity_s.pct_change().fillna(0.0).values
     mu = rtn.mean() * 390 * 252
     sigma = rtn.std(ddof=1) * np.sqrt(390 * 252)

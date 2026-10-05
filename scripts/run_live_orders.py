@@ -1,19 +1,23 @@
 # run_live_orders.py
 import os, time, datetime as dt
 from alpaca_trade_api import REST
+from dotenv import load_dotenv
+
+from configs.loader import load_config
 from logging_utils import TradeLogger
 
-# --------------- Config ----------------
-TICKERS = ["AAPL","MSFT","NVDA","SPY","QQQ"]  # whatever you want V2 to trade
-NOTIONAL_PER_TRADE = 2000.0                   # <-- single source of truth
-POLL_SEC = 0.7                                # polling interval for order status
+CONFIG = load_config("live_v2.yml")
+TICKERS = CONFIG["symbols"]
+NOTIONAL_PER_TRADE = CONFIG["execution"]["demo_notional_per_trade"]
+POLL_SEC = CONFIG["execution"]["order_poll_seconds"]
 
 # ------------- Setup (env) --------------
+load_dotenv()
 API_KEY = os.getenv("ALPACA_KEY")
 API_SECRET = os.getenv("ALPACA_SECRET")
 BASE_URL = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
 
-VERSION = "v2"
+VERSION = CONFIG["version"]
 RUN_ID = dt.datetime.utcnow().strftime("%Y%m%d-%H%M%S")
 
 # Per-run file (separate CSV each test)
@@ -89,7 +93,7 @@ if __name__ == "__main__":
     try:
         for sym in TICKERS:
             # --- your V2 entry condition here ---
-            # e.g., reason_str = "ema9>ema21=True, rsi=56.1, above_vwap=True"
+            # Replace this placeholder with a real strategy reason.
             reason_str = "V2-signal"  # replace with your real reason string
             submit_buy(sym, reason=reason_str)
             time.sleep(1.5)  # placeholder delay

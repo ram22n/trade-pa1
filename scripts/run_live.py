@@ -9,37 +9,43 @@ import pandas as pd
 from dotenv import load_dotenv
 from alpaca_trade_api import REST
 
+from advisors.rules import rules_strategy
+from configs.loader import load_config, parse_time
 from features.indicators import add_indicators
 from logging_utils import TradeLogger
 
-# --- Config ---
-TICKERS = [
-    "SPY", "QQQ", "DIA", "IWM",
-    "XLK", "XLF", "XLV", "XLI", "XLP", "XLU", "XLE", "XLY",
-    "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "JPM", "COST",
-]
-LOOKBACK_MINUTES = 390
-RISK_PER_TRADE   = 0.003   # 0.3% equity risked per entry
-ATR_MULT         = 2.5     # stop = entry - ATR_MULT * ATR
-MAX_ALLOC        = 0.03    # max 3% equity in one ticker
-SESSION_START    = dt.time(9, 35)
-CUT_OFF_ENTRIES  = dt.time(15, 15)  # stop opening new positions
-CLOSE_ALL_BY     = dt.time(15, 45)  # stop new entries + close everything
-ET               = pytz.timezone("US/Eastern")
-POLL_SEC         = 0.7
-SLEEP_FALLBACK   = 15
-MAX_OPEN_POSITIONS = 5
-EMA_FAST_LEN     = 12
-EMA_SLOW_LEN     = 26
-BUY_RSI_MIN      = 55
-SELL_RSI_MAX     = 75
-VWAP_SELL_MULT   = 0.995
-MIN_PRICE        = 20.0
-MIN_ATR_PCT      = 0.0005
-MAX_ATR_PCT      = 0.01
-TECH_TICKERS     = {"QQQ", "XLK", "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META"}
+CONFIG = load_config("live_v2.yml")
+DATA = CONFIG["data"]
+INDICATORS = CONFIG["indicators"]
+SIGNAL = CONFIG["signal"]
+MARKET_FILTER = CONFIG["market_filter"]
+RISK = CONFIG["risk"]
+SESSION = CONFIG["session"]
+EXECUTION = CONFIG["execution"]
 
-VERSION = "v2"
+TICKERS = CONFIG["symbols"]
+LOOKBACK_MINUTES = DATA["lookback_bars"]
+RISK_PER_TRADE = RISK["risk_per_trade"]
+ATR_MULT = RISK["atr_stop_multiplier"]
+MAX_ALLOC = RISK["max_allocation_per_symbol"]
+SESSION_START = parse_time(SESSION["entry_start"])
+CUT_OFF_ENTRIES = parse_time(SESSION["entry_cutoff"])
+CLOSE_ALL_BY = parse_time(SESSION["close_all_at"])
+ET = pytz.timezone(SESSION["timezone"])
+POLL_SEC = EXECUTION["order_poll_seconds"]
+SLEEP_FALLBACK = EXECUTION["error_sleep_seconds"]
+MAX_OPEN_POSITIONS = RISK["max_open_positions"]
+EMA_FAST_LEN = INDICATORS["ema_fast"]
+EMA_SLOW_LEN = INDICATORS["ema_slow"]
+BUY_RSI_MIN = SIGNAL["buy_rsi_min"]
+SELL_RSI_MAX = SIGNAL["sell_rsi_max"]
+VWAP_SELL_MULT = SIGNAL["vwap_sell_multiplier"]
+MIN_PRICE = RISK["minimum_price"]
+MIN_ATR_PCT = RISK["minimum_atr_percent"]
+MAX_ATR_PCT = RISK["maximum_atr_percent"]
+TECH_TICKERS = set(MARKET_FILTER["technology_symbols"])
+
+VERSION = CONFIG["version"]
 load_dotenv()
 API_KEY    = os.getenv("ALPACA_KEY")
 API_SECRET = os.getenv("ALPACA_SECRET")
@@ -72,7 +78,13 @@ def session_start_iso() -> str:
 
 def fetch_bars(api: REST, symbol: str, n: int = LOOKBACK_MINUTES) -> pd.DataFrame | None:
     try:
-        bars = api.get_bars(symbol, "1Min", start=session_start_iso(), limit=n, feed="iex").df
+        bars = api.get_bars(
+            symbol,
+            DATA["interval"],
+            start=session_start_iso(),
+            limit=n,
+            feed=DATA["feed"],
+        ).df
     except Exception as e:
         print(f"  {symbol}: bar fetch error - {e}")
         return None
@@ -90,28 +102,9 @@ def fetch_bars(api: REST, symbol: str, n: int = LOOKBACK_MINUTES) -> pd.DataFram
 
 
 def prepare_live_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    df = add_indicators(df)
-    df["ema_fast"] = df["Close"].ewm(span=EMA_FAST_LEN, adjust=False).mean()
-    df["ema_slow"] = df["Close"].ewm(span=EMA_SLOW_LEN, adjust=False).mean()
+    df = add_indicators(df, INDICATORS)
     df["prev_close"] = df["Close"].shift(1)
     return df
-
-
-def live_rules_strategy(row):
-    if (
-        row["ema_fast"] > row["ema_slow"]
-        and row["rsi"] >= BUY_RSI_MIN
-        and row["Close"] > row["ema_50"]
-        and row["Volume"] > row["vol_ma20"]
-    ):
-        return "BUY"
-    if (
-        row["ema_fast"] < row["ema_slow"]
-        or (row["rsi"] > SELL_RSI_MAX and row["Close"] < row["prev_close"])
-        or row["Close"] < row["vwap"] * VWAP_SELL_MULT
-    ):
-        return "SELL"
-    return "HOLD"
 
 
 def is_market_healthy(rows: dict[str, pd.Series]) -> tuple[bool, bool, bool]:
@@ -121,13 +114,13 @@ def is_market_healthy(rows: dict[str, pd.Series]) -> tuple[bool, bool, bool]:
         spy is not None
         and spy["ema_fast"] > spy["ema_slow"]
         and spy["Close"] > spy["ema_50"]
-        and spy["rsi"] >= 50
+        and spy["rsi"] >= MARKET_FILTER["benchmark_rsi_min"]
     )
     qqq_ok = bool(
         qqq is not None
         and qqq["ema_fast"] > qqq["ema_slow"]
         and qqq["Close"] > qqq["ema_50"]
-        and qqq["rsi"] >= 50
+        and qqq["rsi"] >= MARKET_FILTER["benchmark_rsi_min"]
     )
     return spy_ok, qqq_ok, spy_ok or qqq_ok
 
@@ -271,7 +264,7 @@ def init_state_from_alpaca(api: REST, tickers: list, loggers: list[TradeLogger] 
                 qty = int(float(pos.qty))
                 entry_px = float(pos.avg_entry_price)
                 # Can't recover the original ATR stop; set a conservative 2% trailing stop
-                stop = entry_px * 0.98
+                stop = entry_px * (1 - RISK["existing_position_fallback_stop_percent"])
                 state[sym] = {"qty": qty, "entry_px": entry_px, "stop": stop}
                 for logger in loggers or []:
                     logger.seed_position(sym, qty, entry_px)
@@ -344,7 +337,7 @@ def main():
 
                 for sym in TICKERS:
                     df = fetch_bars(api, sym, LOOKBACK_MINUTES)
-                    if df is None or len(df) < 60:
+                    if df is None or len(df) < DATA["minimum_bars"]:
                         print(f"  {sym}: not enough bars, skipping")
                         continue
                     df = prepare_live_indicators(df)
@@ -372,7 +365,7 @@ def main():
                     vol_ma20 = float(last["vol_ma20"])
                     atr_pct = atr / px if px > 0 else math.nan
                     ts   = df.index[-1].strftime("%H:%M")
-                    sig  = live_rules_strategy(last)
+                    sig  = rules_strategy(last, SIGNAL)
                     pos  = state[sym]
                     market_ok = entry_market_ok(sym, spy_ok, qqq_ok)
                     decision = "HOLD"

@@ -7,12 +7,12 @@ import streamlit as st
 import matplotlib.pyplot as plt
 from streamlit_autorefresh import st_autorefresh
 
-from datetime import datetime
+from configs.loader import load_config
 
-# -------- Config --------
+CONFIG = load_config("live_v2.yml")
 CSV_PATH = os.path.join("reports", "V2_runs", "latest", "trades_latest.csv")
-TZ = "America/Los_Angeles"
-REFRESH_SEC = 2  # auto refresh every 2 seconds
+TZ = CONFIG["dashboard"]["timezone"]
+REFRESH_SEC = CONFIG["dashboard"]["refresh_seconds"]
 
 st.set_page_config(page_title="V2 Live Trades", layout="wide")
 st_autorefresh(interval=REFRESH_SEC * 1000, limit=None, key="refresh")

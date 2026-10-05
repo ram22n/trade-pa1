@@ -22,16 +22,16 @@ python test_alpaca_account.py
 python test_yfinance.py
 
 # Signal-count backtest (no P&L simulation)
-python scripts/run_backtest.py
+python -m scripts.run_backtest
 
 # Full equity-curve backtest with ATR-based position sizing
-python scripts/run_backtest_pnl.py
+python -m scripts.run_backtest_pnl
 
 # Live signal scanner (prints BUY/SELL/HOLD each minute, no orders)
-python scripts/run_live_cli.py
+python -m scripts.run_live_cli
 
 # Live order execution skeleton (submits Alpaca market orders)
-python scripts/run_live_orders.py
+python -m scripts.run_live_orders
 
 # Streamlit dashboard (reads reports/V2_runs/latest/trades_latest.csv)
 streamlit run dashboard_streamlit.py
@@ -50,7 +50,7 @@ The pipeline is: **data source → indicators → signal → action**.
 
 2. **`advisors/rules.py`** — `rules_strategy(row)` applies the trading logic to a single bar: returns `"BUY"` (EMA9 > EMA21 and RSI ≥ 50), `"SELL"` (EMA9 < EMA21 or RSI > 75 or price 0.5% below VWAP), or `"HOLD"`. This is currently marked as a test-friendly relaxed version (VWAP filter removed from BUY condition).
 
-3. **`configs/v0.yml`** — Central config: tickers, 1-min bar interval, session window (09:35–15:55 ET), risk params (`per_trade_r`, `max_gross_exposure`, `atr_stop_mult`), cost assumptions, feature parameters, and backtest train/test day counts. Scripts currently hardcode these values directly; v0.yml is the reference for intended settings.
+3. **`configs/live_v2.yml` and `configs/backup_v1.yml`** — Versioned settings loaded by the Python scripts. `live_v2.yml` controls the current live bot, scanner, and dashboard. `backup_v1.yml` preserves the older backtest strategy.
 
 ### Execution Layer
 

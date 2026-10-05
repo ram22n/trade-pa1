@@ -1,5 +1,5 @@
 # features/indicators.py
-# V2 indicators: EMA9/21/50, RSI14, VWAP, ATR14, VolMA20, Bollinger(20,2)
+# Indicator calculations parameterized by a versioned strategy configuration.
 # Input df must have columns: ["Open","High","Low","Close","Volume"]
 
 from __future__ import annotations
@@ -47,17 +47,17 @@ def _atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
     return atr
 
 
-def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def add_indicators(df: pd.DataFrame, settings: dict) -> pd.DataFrame:
     """
     Return a copy of df with the following columns added:
-      - ema_fast (EMA 9)
-      - ema_slow (EMA 21)
-      - ema_50   (EMA 50)
-      - rsi      (RSI 14)
+      - ema_fast
+      - ema_slow
+      - ema_50 (trend EMA; retained name for CSV compatibility)
+      - rsi
       - vwap     (cumulative VWAP over the provided window)
-      - atr      (ATR 14)
-      - vol_ma20 (20-bar average volume)
-      - bb_mid, bb_upper, bb_lower (Bollinger Bands 20, 2σ)
+      - atr
+      - vol_ma20 (volume average; retained name for CSV compatibility)
+      - bb_mid, bb_upper, bb_lower
 
     Expects columns: ["Open","High","Low","Close","Volume"].
     """
@@ -69,12 +69,12 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
     # --- EMAs ---
-    df["ema_fast"] = df["Close"].ewm(span=9, adjust=False).mean()
-    df["ema_slow"] = df["Close"].ewm(span=21, adjust=False).mean()
-    df["ema_50"]   = df["Close"].ewm(span=50, adjust=False).mean()
+    df["ema_fast"] = df["Close"].ewm(span=settings["ema_fast"], adjust=False).mean()
+    df["ema_slow"] = df["Close"].ewm(span=settings["ema_slow"], adjust=False).mean()
+    df["ema_50"] = df["Close"].ewm(span=settings["ema_trend"], adjust=False).mean()
 
     # --- RSI ---
-    df["rsi"] = _rsi(df["Close"], period=14)
+    df["rsi"] = _rsi(df["Close"], period=settings["rsi_period"])
 
     # --- VWAP (cumulative over the slice) ---
     # Using Close*Volume for consistency with V1 logic.
@@ -83,16 +83,20 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["vwap"] = (pv_cum / vol_cum).astype(float)
 
     # --- ATR ---
-    df["atr"] = _atr(df, period=14)
+    df["atr"] = _atr(df, period=settings["atr_period"])
 
     # --- Volume moving average ---
-    df["vol_ma20"] = df["Volume"].rolling(window=20, min_periods=1).mean()
+    df["vol_ma20"] = df["Volume"].rolling(
+        window=settings["volume_ma_period"], min_periods=1
+    ).mean()
 
     # --- Bollinger Bands (20, 2σ) ---
-    mid = df["Close"].rolling(window=20, min_periods=1).mean()
-    std = df["Close"].rolling(window=20, min_periods=1).std(ddof=0)
+    bb_period = settings["bollinger_period"]
+    bb_width = settings["bollinger_std_dev"]
+    mid = df["Close"].rolling(window=bb_period, min_periods=1).mean()
+    std = df["Close"].rolling(window=bb_period, min_periods=1).std(ddof=0)
     df["bb_mid"]   = mid
-    df["bb_upper"] = mid + 2 * std
-    df["bb_lower"] = mid - 2 * std
+    df["bb_upper"] = mid + bb_width * std
+    df["bb_lower"] = mid - bb_width * std
 
     return df

@@ -1,0 +1,76 @@
+version: live_v2
+
+symbols:
+  - SPY
+  - QQQ
+  - DIA
+  - IWM
+  - XLK
+  - XLF
+  - XLV
+  - XLI
+  - XLP
+  - XLU
+  - XLE
+  - XLY
+  - AAPL
+  - MSFT
+  - NVDA
+  - AMZN
+  - GOOGL
+  - META
+  - JPM
+  - COST
+
+data:
+  interval: 1Min
+  feed: iex
+  lookback_bars: 390
+  minimum_bars: 60
+
+indicators:
+  ema_fast: 12
+  ema_slow: 26
+  ema_trend: 50
+  rsi_period: 14
+  atr_period: 14
+  volume_ma_period: 20
+  bollinger_period: 20
+  bollinger_std_dev: 2.0
+
+signal:
+  buy_rsi_min: 55
+  sell_rsi_max: 75
+  vwap_sell_multiplier: 0.995
+  require_close_above_ema_trend: true
+  require_volume_above_average: true
+  overbought_sell_requires_weakening: true
+
+market_filter:
+  benchmark_rsi_min: 50
+  technology_symbols: [QQQ, XLK, AAPL, MSFT, NVDA, AMZN, GOOGL, META]
+
+risk:
+  risk_per_trade: 0.003
+  atr_stop_multiplier: 2.5
+  max_allocation_per_symbol: 0.03
+  max_open_positions: 5
+  minimum_price: 20.0
+  minimum_atr_percent: 0.0005
+  maximum_atr_percent: 0.01
+  existing_position_fallback_stop_percent: 0.02
+
+session:
+  timezone: America/New_York
+  entry_start: "09:35"
+  entry_cutoff: "15:15"
+  close_all_at: "15:45"
+
+execution:
+  order_poll_seconds: 0.7
+  error_sleep_seconds: 15
+  demo_notional_per_trade: 2000.0
+
+dashboard:
+  timezone: America/Toronto
+  refresh_seconds: 2

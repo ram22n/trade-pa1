@@ -1,0 +1,51 @@
+version: backup_v1
+
+symbols: [AAPL, MSFT, NVDA, SPY, QQQ]
+
+data:
+  interval: 1m
+  period: 5d
+  live_interval: 1Min
+  live_feed: iex
+  live_lookback_bars: 120
+  minimum_bars: 30
+
+indicators:
+  ema_fast: 9
+  ema_slow: 21
+  ema_trend: 50
+  rsi_period: 14
+  atr_period: 14
+  volume_ma_period: 20
+  bollinger_period: 20
+  bollinger_std_dev: 2.0
+
+signal:
+  buy_rsi_min: 50
+  sell_rsi_max: 75
+  vwap_sell_multiplier: 0.995
+  require_close_above_ema_trend: false
+  require_volume_above_average: false
+  overbought_sell_requires_weakening: false
+
+risk:
+  risk_per_trade: 0.003
+  atr_stop_multiplier: 2.0
+  max_allocation_per_symbol: 0.30
+
+costs:
+  slippage_half_spread: 0.00015
+
+session:
+  timezone: America/New_York
+  entry_start: "09:35"
+  close_all_at: "15:55"
+
+execution:
+  error_sleep_seconds: 15
+
+backtest:
+  train_days: 10
+  test_days: 2
+  initial_equity: 1.0
+
