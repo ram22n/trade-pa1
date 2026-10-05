@@ -1,0 +1,22 @@
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+
+# Python environments and generated files
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Generated trading and account data
+reports/
+*.csv
+*.log
+
+# Personal and editor files
+*.docx
+.DS_Store
+.claude/
+
